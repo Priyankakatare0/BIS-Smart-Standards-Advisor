@@ -29,10 +29,23 @@ def predict(product_description: str):
     if not recs:
         return "No matching standards found. Try a more specific description.", "", ""
 
-    # Format markdown output
+
+
+    # Format markdown output with colored confidence score
     md = ""
     for i, r in enumerate(recs, 1):
-        md += f"### {i}. {r['standard_id']}\n"
+        score = r.get("rerank_score")
+        if score is not None:
+            if score >= 2:
+                color = "#27ae60"  # green
+            elif score >= 0:
+                color = "#e67e22"  # orange
+            else:
+                color = "#c0392b"  # red
+            score_str = f' <span style="color:{color}; font-weight:bold">(Confidence: {score:.3f})</span>'
+        else:
+            score_str = ""
+        md += f"### {i}. {r['standard_id']}{score_str}\n"
         md += f"{r['rationale']}\n\n"
         md += "---\n"
 

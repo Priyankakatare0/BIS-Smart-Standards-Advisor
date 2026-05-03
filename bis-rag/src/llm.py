@@ -32,6 +32,9 @@ def generate_rationale(query: str, chunks: list) -> list:
     if not allowed:
         return []
 
+    # Map standard_id to rerank_score for easy lookup
+    score_map = {c["standard_id"]: c.get("rerank_score", None) for c in chunks if c["standard_id"] != "UNKNOWN"}
+
     context = "\n\n".join(
         f"[{c['standard_id']}]\n{c['text'][:450]}" for c in chunks
         if c["standard_id"] != "UNKNOWN"
@@ -66,9 +69,13 @@ JSON format:
     # Safety: strip any hallucinated IDs
     results = [r for r in results if r.get("standard_id") in allowed]
 
+    # Attach rerank_score to each result
+    for r in results:
+        r["rerank_score"] = score_map.get(r["standard_id"])
+
     # Fallback if LLM returns nothing valid
     if not results:
-        results = [{"standard_id": c["standard_id"], "rationale": "Relevant based on retrieval."}
+        results = [{"standard_id": c["standard_id"], "rationale": "Relevant based on retrieval.", "rerank_score": c.get("rerank_score", None)}
                    for c in chunks[:3] if c["standard_id"] != "UNKNOWN"]
 
     return results

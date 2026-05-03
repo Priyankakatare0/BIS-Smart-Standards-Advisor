@@ -38,39 +38,47 @@ def _load_bm25():
     return _bm25, _bm25chunks
 
 # --- Dense search ---
-def _dense_search(query: str, top_k: int = 10) -> list:
+def _dense_search(query: str, top_k: int = 10, category: str = None) -> list:
     model  = _load_model()
     col    = _load_collection()
     vec    = model.encode(query, normalize_embeddings=True).tolist()
-    res    = col.query(query_embeddings=[vec], n_results=top_k,
+    res    = col.query(query_embeddings=[vec], n_results=top_k*2,  # fetch more for filtering
                        include=["documents","metadatas","distances"])
     hits = []
     for doc, meta, dist in zip(res["documents"][0],
                                 res["metadatas"][0],
                                 res["distances"][0]):
+        if category and meta.get("category") != category:
+            continue
         hits.append({
             "text":        doc,
             "standard_id": meta["standard_id"],
             "category":    meta["category"],
             "score_dense": float(1 - dist),
         })
+        if len(hits) >= top_k:
+            break
     return hits
 
 # --- BM25 keyword search ---
-def _bm25_search(query: str, top_k: int = 10) -> list:
+def _bm25_search(query: str, top_k: int = 10, category: str = None) -> list:
     bm25, chunks = _load_bm25()
     tokens       = query.lower().split()
     scores       = bm25.get_scores(tokens)
-    top_idx      = np.argsort(scores)[::-1][:top_k]
+    top_idx      = np.argsort(scores)[::-1]
     hits = []
     for i in top_idx:
         if scores[i] > 0:
+            if category and chunks[i]["category"] != category:
+                continue
             hits.append({
                 "text":        chunks[i]["text"],
                 "standard_id": chunks[i]["standard_id"],
                 "category":    chunks[i]["category"],
                 "score_bm25":  float(scores[i]),
             })
+            if len(hits) >= top_k:
+                break
     return hits
 
 # --- Reciprocal Rank Fusion ---
@@ -87,9 +95,9 @@ def _rrf_merge(dense: list, sparse: list, k: int = 60) -> list:
     return sorted(scores.values(), key=lambda x: x["rrf"], reverse=True)
 
 # --- Public API ---
-def hybrid_retrieve(query: str, top_k: int = 10) -> list:
-    dense  = _dense_search(query, top_k=top_k)
-    sparse = _bm25_search(query, top_k=top_k)
+def hybrid_retrieve(query: str, top_k: int = 10, category: str = None) -> list:
+    dense  = _dense_search(query, top_k=top_k, category=category)
+    sparse = _bm25_search(query, top_k=top_k, category=category)
     merged = _rrf_merge(dense, sparse)
     return merged[:top_k]
 
